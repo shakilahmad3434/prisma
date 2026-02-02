@@ -1,14 +1,15 @@
-# 🚀 Complete Guide: Prisma + TypeScript + PostgreSQL
+# 🚀 Complete Guide: Prisma v7 + TypeScript + PostgreSQL + Express
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma"/>
+  <img src="https://img.shields.io/badge/Prisma_v7-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma"/>
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"/>
   <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/>
+  <img src="https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express"/>
   <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js"/>
 </p>
 
 <p align="center">
-  <b>A production-ready guide to building type-safe database applications</b>
+  <b>A production-ready guide to building type-safe database applications with ESM support</b>
 </p>
 
 ---
@@ -19,9 +20,11 @@
 - [Prerequisites](#-prerequisites)
 - [Project Setup](#-project-setup)
 - [PostgreSQL Configuration](#-postgresql-configuration)
-- [Prisma Installation](#-prisma-installation)
+- [Prisma v7 Installation](#-prisma-v7-installation)
 - [Schema Design](#-schema-design)
 - [Migrations](#-migrations)
+- [Prisma Client Setup](#-prisma-client-setup)
+- [Express Integration](#-express-integration)
 - [CRUD Operations](#-crud-operations)
 - [Advanced Queries](#-advanced-queries)
 - [Best Practices](#-best-practices)
@@ -31,29 +34,35 @@
 
 ## 🎯 Introduction
 
-### What is Prisma?
+### What is Prisma v7?
 
-**Prisma** is a next-generation ORM that provides:
+**Prisma v7** is the latest next-generation ORM with ESM-first support:
 
 | Feature | Description |
 |---------|-------------|
 | 🔒 **Type Safety** | Auto-generated types from your schema |
-| 🛠️ **Prisma Client** | Intuitive database queries |
+| 🛠️ **Prisma Client** | Intuitive database queries with driver adapters |
 | 🔄 **Migrations** | Database versioning made easy |
 | 🎨 **Prisma Studio** | Visual database browser |
+| ⚡ **ESM-First** | Native ES modules support |
+| 🔌 **Driver Adapters** | Direct database driver integration |
 
 ### Architecture Overview
 
 ```mermaid
 graph TB
-    A[TypeScript Application] --> B[Prisma Client]
-    B --> C[Prisma Engine]
-    C --> D[(PostgreSQL Database)]
+    A[TypeScript Application] --> B[Express.js Server]
+    B --> C[Prisma Client]
+    C --> D[Driver Adapter - PrismaPg]
+    D --> E[node-postgres - pg]
+    E --> F[(PostgreSQL Database)]
     
     style A fill:#3178C6,color:#fff
-    style B fill:#2D3748,color:#fff
-    style C fill:#5A67D8,color:#fff
-    style D fill:#4169E1,color:#fff
+    style B fill:#000000,color:#fff
+    style C fill:#2D3748,color:#fff
+    style D fill:#5A67D8,color:#fff
+    style E fill:#336791,color:#fff
+    style F fill:#4169E1,color:#fff
 ```
 
 ---
@@ -64,7 +73,7 @@ Before starting, ensure you have:
 
 | Requirement | Version | Check Command |
 |-------------|---------|---------------|
-| 📦 Node.js | ≥ 18.x | `node --version` |
+| 📦 Node.js | ≥ 20.19+ / 22.12+ / 24.0+ | `node --version` |
 | 📦 npm/yarn | Latest | `npm --version` |
 | 🐘 PostgreSQL | ≥ 13.x | `psql --version` |
 | 💻 VS Code | Latest | - |
@@ -80,8 +89,8 @@ Before starting, ensure you have:
 
 ```bash
 # Create and navigate to project folder
-mkdir prisma-typescript-demo
-cd prisma-typescript-demo
+mkdir prisma-express-app
+cd prisma-express-app
 ```
 
 ### Step 2: Initialize Node.js Project
@@ -90,30 +99,41 @@ cd prisma-typescript-demo
 npm init -y
 ```
 
-### Step 3: Install Dependencies
+### Step 3: Install TypeScript & tsx
 
 ```bash
-# Install TypeScript and related packages
-npm install typescript ts-node @types/node --save-dev
+# Install TypeScript and tsx (modern ts-node alternative)
+npm install typescript tsx @types/node --save-dev
 
 # Initialize TypeScript configuration
 npx tsc --init
 ```
 
-### Step 4: Configure TypeScript
+> [!NOTE]
+> We use **tsx** instead of ts-node for better ESM support and faster execution!
+
+### Step 4: Install Express.js
+
+```bash
+# Install Express and types
+npm install express
+npm install @types/express --save-dev
+```
+
+### Step 5: Configure TypeScript
 
 Update your `tsconfig.json`:
 
 ```json
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
+    "target": "ES2023",
+    "module": "ESNext",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
+    "moduleResolution": "bundler",
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
@@ -125,19 +145,29 @@ Update your `tsconfig.json`:
 }
 ```
 
-### Step 5: Create Project Structure
+### Step 6: Configure ESM in package.json
 
-```
-📦 prisma-typescript-demo
- ┣ 📂 prisma
- ┃ ┗ 📜 schema.prisma
- ┣ 📂 src
- ┃ ┣ 📂 services
- ┃ ┣ 📂 repositories
- ┃ ┗ 📜 index.ts
- ┣ 📜 .env
- ┣ 📜 package.json
- ┗ 📜 tsconfig.json
+Update your `package.json`:
+
+```json
+{
+  "name": "prisma-express-app",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio --config ./prisma.config.ts",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}
 ```
 
 ---
@@ -177,29 +207,60 @@ DATABASE_URL="postgresql://prisma_user:your_password@localhost:5432/prisma_demo?
 
 ---
 
-## ⚡ Prisma Installation
+## ⚡ Prisma v7 Installation
 
-### Step 1: Install Prisma CLI & Client
+### Step 1: Install Prisma CLI & Dependencies
 
 ```bash
-# Install Prisma as dev dependency
-npm install prisma --save-dev
+# Install Prisma CLI and types as dev dependencies
+npm install prisma @types/node @types/pg --save-dev
 
-# Install Prisma Client
-npm install @prisma/client
+# Install Prisma Client, driver adapter, pg driver, and dotenv
+npm install @prisma/client @prisma/adapter-pg pg dotenv
 ```
+
+### Package Breakdown
+
+| Package | Purpose |
+|---------|---------|
+| `prisma` | CLI for migrations, generate, and studio |
+| `@prisma/client` | Type-safe database client |
+| `@prisma/adapter-pg` | PostgreSQL driver adapter for Prisma v7 |
+| `pg` | node-postgres database driver |
+| `@types/pg` | TypeScript types for pg |
+| `dotenv` | Loads environment variables from `.env` |
 
 ### Step 2: Initialize Prisma
 
 ```bash
-npx prisma init
+npx prisma init --datasource-provider postgresql --output ../generated/prisma
 ```
 
 This creates:
 - 📂 `prisma/schema.prisma` - Your schema file
 - 📜 `.env` - Environment variables
+- 📜 `prisma.config.ts` - Prisma configuration file
 
-### Step 3: Update `.env`
+### Step 3: Prisma Config File
+
+The generated `prisma.config.ts`:
+
+```typescript
+import 'dotenv/config'
+import { defineConfig, env } from 'prisma/config'
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: {
+    path: 'prisma/migrations',
+  },
+  datasource: {
+    url: env('DATABASE_URL'),
+  },
+})
+```
+
+### Step 4: Update `.env`
 
 ```env
 DATABASE_URL="postgresql://prisma_user:your_password@localhost:5432/prisma_demo?schema=public"
@@ -209,18 +270,18 @@ DATABASE_URL="postgresql://prisma_user:your_password@localhost:5432/prisma_demo?
 
 ## 📐 Schema Design
 
-### Basic Schema Structure
+### Basic Schema Structure (Prisma v7)
 
 ```prisma
 // prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // 👤 User Model
@@ -283,6 +344,9 @@ enum Role {
 }
 ```
 
+> [!IMPORTANT]
+> In Prisma v7, the generator uses `"prisma-client"` instead of `"prisma-client-js"` for ESM-first support!
+
 ### Schema Relationships Chart
 
 ```mermaid
@@ -330,16 +394,16 @@ erDiagram
 npx prisma migrate dev --name init
 ```
 
-### Step 2: Apply Migrations (Production)
-
-```bash
-npx prisma migrate deploy
-```
-
-### Step 3: Generate Prisma Client
+### Step 2: Generate Prisma Client
 
 ```bash
 npx prisma generate
+```
+
+### Step 3: Apply Migrations (Production)
+
+```bash
+npx prisma migrate deploy
 ```
 
 ### Migration Commands Reference
@@ -357,21 +421,25 @@ npx prisma generate
 
 ---
 
-## 🛠️ CRUD Operations
+## � Prisma Client Setup
 
-### Initialize Prisma Client
+### Create Prisma Client with Driver Adapter
 
 ```typescript
 // src/lib/prisma.ts
-import { PrismaClient } from '@prisma/client';
+import "dotenv/config";
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../../generated/prisma/client.js';
+
+const connectionString = `${process.env.DATABASE_URL}`;
+
+const adapter = new PrismaPg({ connectionString });
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: ['query', 'info', 'warn', 'error'],
-});
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
@@ -380,7 +448,97 @@ if (process.env.NODE_ENV !== 'production') {
 export default prisma;
 ```
 
-### 📝 CREATE Operations
+> [!IMPORTANT]
+> Prisma v7 requires a **driver adapter** to connect to the database. The `PrismaPg` adapter wraps the `pg` driver.
+
+---
+
+## 🌐 Express Integration
+
+### Complete Express + Prisma Setup
+
+```typescript
+// src/index.ts
+import express, { Request, Response, NextFunction } from 'express';
+import { prisma } from './lib/prisma.js';
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(express.json());
+
+// Health check
+app.get('/health', (req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Get all users
+app.get('/api/users', async (req: Request, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      include: { posts: true, profile: true }
+    });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Create user
+app.post('/api/users', async (req: Request, res: Response) => {
+  try {
+    const { email, name, password } = req.body;
+    const user = await prisma.user.create({
+      data: { email, name, password }
+    });
+    res.status(201).json(user);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// Get user by ID
+app.get('/api/users/:id', async (req: Request, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: { posts: true, profile: true }
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// Graceful shutdown
+process.on('beforeExit', async () => {
+  await prisma.$disconnect();
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
+```
+
+### Run the Server
+
+```bash
+# Development with hot reload
+npm run dev
+
+# Or run directly
+npx tsx src/index.ts
+```
+
+---
+
+## �️ CRUD Operations
+
+### �📝 CREATE Operations
 
 ```typescript
 // Create single user
@@ -396,9 +554,7 @@ const user = await prisma.user.create({
       }
     }
   },
-  include: {
-    profile: true
-  }
+  include: { profile: true }
 });
 
 // Create multiple users
@@ -482,9 +638,7 @@ const updatedUser = await prisma.user.update({
   where: { id: 1 },
   data: {
     name: 'John Updated',
-    profile: {
-      update: { bio: 'Updated bio' }
-    }
+    profile: { update: { bio: 'Updated bio' } }
   }
 });
 
@@ -559,7 +713,7 @@ const result = await prisma.$transaction(async (tx) => {
 ```typescript
 // Raw query
 const users = await prisma.$queryRaw`
-  SELECT * FROM users WHERE role = ${Role.ADMIN}
+  SELECT * FROM users WHERE role = ${'ADMIN'}
 `;
 
 // Raw execute
@@ -582,12 +736,7 @@ async function paginateUsers(page: number, pageSize: number) {
   
   return {
     data: users,
-    meta: {
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize)
-    }
+    meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) }
   };
 }
 
@@ -611,29 +760,36 @@ async function cursorPaginate(cursor?: number, take: number = 10) {
 ```env
 # .env
 DATABASE_URL="postgresql://user:pass@localhost:5432/db"
-DIRECT_URL="postgresql://user:pass@localhost:5432/db"  # For migrations
+NODE_ENV="development"
+PORT=3000
 ```
 
 ### 2. 📁 Project Structure
 
 ```
-📦 src
+📦 prisma-express-app
+ ┣ 📂 generated
+ ┃ ┗ � prisma           # Generated Prisma Client
  ┣ 📂 prisma
- ┃ ┗ 📜 client.ts          # Singleton client
- ┣ 📂 repositories
- ┃ ┣ 📜 user.repository.ts
- ┃ ┗ 📜 post.repository.ts
- ┣ 📂 services
- ┃ ┣ 📜 user.service.ts
- ┃ ┗ 📜 post.service.ts
- ┗ 📂 types
-   ┗ 📜 index.ts           # Extended types
+ ┃ ┣ 📂 migrations
+ ┃ ┣ 📜 schema.prisma
+ ┃ ┗ 📜 seed.ts
+ ┣ 📂 src
+ ┃ ┣ � lib
+ ┃ ┃ ┗ 📜 prisma.ts
+ ┃ ┣ 📂 routes
+ ┃ ┣ 📂 services
+ ┃ ┗ 📜 index.ts
+ ┣ 📜 .env
+ ┣ 📜 package.json
+ ┣ 📜 prisma.config.ts
+ ┗ 📜 tsconfig.json
 ```
 
 ### 3. 🎯 Type Safety
 
 ```typescript
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/prisma/client.js';
 
 // Use Prisma-generated types
 type UserWithPosts = Prisma.UserGetPayload<{
@@ -647,7 +803,7 @@ type UserCreateInput = Prisma.UserCreateInput;
 ### 4. 🔄 Error Handling
 
 ```typescript
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/prisma/client.js';
 
 try {
   await prisma.user.create({ data: { email: 'test@test.com', password: 'pass' } });
@@ -678,6 +834,7 @@ try {
 
 ```typescript
 const prisma = new PrismaClient({
+  adapter,
   log: [
     { level: 'query', emit: 'event' },
     { level: 'error', emit: 'stdout' }
@@ -696,7 +853,7 @@ prisma.$on('query', (e) => {
 
 ```bash
 # Open Prisma Studio
-npx prisma studio
+npx prisma studio --config ./prisma.config.ts
 
 # Format schema
 npx prisma format
@@ -713,24 +870,40 @@ npx prisma db seed
 
 ---
 
-## 🎉 Quick Start Script
-
-Add to `package.json`:
+## 🎉 Complete package.json
 
 ```json
 {
+  "name": "prisma-express-app",
+  "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "dev": "ts-node src/index.ts",
-    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "build": "tsc",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "db:studio": "prisma studio",
-    "db:seed": "prisma db seed"
+    "db:studio": "prisma studio --config ./prisma.config.ts",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.x",
+    "@prisma/client": "^7.x",
+    "dotenv": "^16.x",
+    "express": "^5.x",
+    "pg": "^8.x"
+  },
+  "devDependencies": {
+    "@types/express": "^5.x",
+    "@types/node": "^22.x",
+    "@types/pg": "^8.x",
+    "prisma": "^7.x",
+    "tsx": "^4.x",
+    "typescript": "^5.x"
   }
 }
 ```
