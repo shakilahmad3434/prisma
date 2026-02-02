@@ -213,7 +213,7 @@ DATABASE_URL="postgresql://prisma_user:your_password@localhost:5432/prisma_demo?
 
 ```bash
 # Install Prisma CLI and types as dev dependencies
-npm install prisma @types/node @types/pg --save-dev
+npm install prisma @types/pg --save-dev
 
 # Install Prisma Client, driver adapter, pg driver, and dotenv
 npm install @prisma/client @prisma/adapter-pg pg dotenv
@@ -270,14 +270,14 @@ DATABASE_URL="postgresql://prisma_user:your_password@localhost:5432/prisma_demo?
 
 ## 📐 Schema Design
 
-### Basic Schema Structure (Prisma v7)
+### Simple Schema Structure (Prisma v7)
 
 ```prisma
 // prisma/schema.prisma
 
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -286,61 +286,20 @@ datasource db {
 
 // 👤 User Model
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  name      String?
-  password  String
-  role      Role     @default(USER)
-  posts     Post[]
-  profile   Profile?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([email])
-  @@map("users")
+  id    Int     @id @default(autoincrement())
+  email String  @unique
+  name  String?
+  posts Post[]
 }
 
 // 📝 Post Model
 model Post {
-  id          Int        @id @default(autoincrement())
-  title       String
-  content     String?
-  published   Boolean    @default(false)
-  author      User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  authorId    Int
-  categories  Category[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  @@index([authorId])
-  @@map("posts")
-}
-
-// 👤 Profile Model (1-to-1)
-model Profile {
-  id     Int     @id @default(autoincrement())
-  bio    String?
-  avatar String?
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId Int     @unique
-
-  @@map("profiles")
-}
-
-// 🏷️ Category Model (Many-to-Many)
-model Category {
-  id    Int    @id @default(autoincrement())
-  name  String @unique
-  posts Post[]
-
-  @@map("categories")
-}
-
-// 🎭 Role Enum
-enum Role {
-  USER
-  ADMIN
-  MODERATOR
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String?
+  published Boolean  @default(false)
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  Int
 }
 ```
 
@@ -352,15 +311,11 @@ enum Role {
 ```mermaid
 erDiagram
     USER ||--o{ POST : writes
-    USER ||--o| PROFILE : has
-    POST }o--o{ CATEGORY : belongs_to
     
     USER {
         int id PK
         string email UK
         string name
-        string password
-        enum role
     }
     
     POST {
@@ -369,18 +324,6 @@ erDiagram
         string content
         boolean published
         int authorId FK
-    }
-    
-    PROFILE {
-        int id PK
-        string bio
-        string avatar
-        int userId FK
-    }
-    
-    CATEGORY {
-        int id PK
-        string name UK
     }
 ```
 
@@ -428,24 +371,15 @@ npx prisma migrate deploy
 ```typescript
 // src/lib/prisma.ts
 import "dotenv/config";
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../../generated/prisma/client.js';
+import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient } from '../generated/prisma/client'
 
-const connectionString = `${process.env.DATABASE_URL}`;
+const connectionString = `${process.env.DATABASE_URL}`
 
-const adapter = new PrismaPg({ connectionString });
+const adapter = new PrismaPg({ connectionString })
+const prisma = new PrismaClient({ adapter })
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
-
-export default prisma;
+export { prisma }
 ```
 
 > [!IMPORTANT]
@@ -459,69 +393,31 @@ export default prisma;
 
 ```typescript
 // src/index.ts
-import express, { Request, Response, NextFunction } from 'express';
-import { prisma } from './lib/prisma.js';
+import express from 'express'
+import { prisma } from './lib/prisma.js'
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(express.json());
-
-// Health check
-app.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+const app = express()
+app.use(express.json())
 
 // Get all users
-app.get('/api/users', async (req: Request, res: Response) => {
-  try {
-    const users = await prisma.user.findMany({
-      include: { posts: true, profile: true }
-    });
-    res.json(users);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
+app.get('/users', async (req, res) => {
+  const users = await prisma.user.findMany({ include: { posts: true } })
+  res.json(users)
+})
 
 // Create user
-app.post('/api/users', async (req: Request, res: Response) => {
-  try {
-    const { email, name, password } = req.body;
-    const user = await prisma.user.create({
-      data: { email, name, password }
-    });
-    res.status(201).json(user);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create user' });
-  }
-});
+app.post('/users', async (req, res) => {
+  const user = await prisma.user.create({ data: req.body })
+  res.json(user)
+})
 
-// Get user by ID
-app.get('/api/users/:id', async (req: Request, res: Response) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: parseInt(req.params.id) },
-      include: { posts: true, profile: true }
-    });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch user' });
-  }
-});
+// Create post
+app.post('/posts', async (req, res) => {
+  const post = await prisma.post.create({ data: req.body })
+  res.json(post)
+})
 
-// Graceful shutdown
-process.on('beforeExit', async () => {
-  await prisma.$disconnect();
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+app.listen(3000, () => console.log('🚀 Server running on http://localhost:3000'))
 ```
 
 ### Run the Server
@@ -536,285 +432,114 @@ npx tsx src/index.ts
 
 ---
 
-## �️ CRUD Operations
+## 🛠️ CRUD Operations
 
-### �📝 CREATE Operations
+### 📝 CREATE
 
 ```typescript
-// Create single user
+// Create user
 const user = await prisma.user.create({
+  data: { email: 'alice@prisma.io', name: 'Alice' }
+})
+
+// Create user with post
+const userWithPost = await prisma.user.create({
   data: {
-    email: 'john@example.com',
-    name: 'John Doe',
-    password: 'hashedPassword123',
-    profile: {
-      create: {
-        bio: 'Software Developer',
-        avatar: 'https://example.com/avatar.jpg'
-      }
+    email: 'bob@prisma.io',
+    name: 'Bob',
+    posts: {
+      create: { title: 'Hello World', content: 'My first post!' }
     }
   },
-  include: { profile: true }
-});
-
-// Create multiple users
-const users = await prisma.user.createMany({
-  data: [
-    { email: 'user1@example.com', name: 'User 1', password: 'pass1' },
-    { email: 'user2@example.com', name: 'User 2', password: 'pass2' },
-  ],
-  skipDuplicates: true
-});
-
-// Create post with categories
-const post = await prisma.post.create({
-  data: {
-    title: 'Getting Started with Prisma',
-    content: 'Prisma is an amazing ORM...',
-    author: { connect: { id: 1 } },
-    categories: {
-      connectOrCreate: [
-        { where: { name: 'Technology' }, create: { name: 'Technology' } },
-        { where: { name: 'Tutorial' }, create: { name: 'Tutorial' } }
-      ]
-    }
-  }
-});
+  include: { posts: true }
+})
 ```
 
-### 📖 READ Operations
+### 📖 READ
 
 ```typescript
-// Find unique user
+// Get all users
+const users = await prisma.user.findMany()
+
+// Get user by email
 const user = await prisma.user.findUnique({
-  where: { email: 'john@example.com' },
-  include: { profile: true, posts: true }
-});
+  where: { email: 'alice@prisma.io' }
+})
 
-// Find first matching
-const admin = await prisma.user.findFirst({
-  where: { role: 'ADMIN' }
-});
-
-// Find many with filters
-const users = await prisma.user.findMany({
-  where: {
-    OR: [
-      { email: { contains: 'example' } },
-      { name: { startsWith: 'John' } }
-    ],
-    createdAt: { gte: new Date('2024-01-01') }
-  },
-  orderBy: { createdAt: 'desc' },
-  take: 10,
-  skip: 0,
-  select: {
-    id: true,
-    email: true,
-    name: true,
-    _count: { select: { posts: true } }
-  }
-});
-
-// Aggregation
-const stats = await prisma.user.aggregate({
-  _count: { id: true },
-  _max: { createdAt: true },
-  where: { role: 'USER' }
-});
-
-// Group by
-const usersByRole = await prisma.user.groupBy({
-  by: ['role'],
-  _count: { id: true }
-});
+// Get users with posts
+const usersWithPosts = await prisma.user.findMany({
+  include: { posts: true }
+})
 ```
 
-### ✏️ UPDATE Operations
+### ✏️ UPDATE
 
 ```typescript
-// Update single record
+// Update user
 const updatedUser = await prisma.user.update({
+  where: { email: 'alice@prisma.io' },
+  data: { name: 'Alice Updated' }
+})
+
+// Publish post
+const publishedPost = await prisma.post.update({
   where: { id: 1 },
-  data: {
-    name: 'John Updated',
-    profile: { update: { bio: 'Updated bio' } }
-  }
-});
-
-// Update many
-const result = await prisma.post.updateMany({
-  where: { published: false },
   data: { published: true }
-});
-
-// Upsert (Update or Create)
-const user = await prisma.user.upsert({
-  where: { email: 'john@example.com' },
-  update: { name: 'John Updated' },
-  create: {
-    email: 'john@example.com',
-    name: 'John Doe',
-    password: 'hashedPassword'
-  }
-});
+})
 ```
 
-### 🗑️ DELETE Operations
+### 🗑️ DELETE
 
 ```typescript
-// Delete single
+// Delete user
 const deletedUser = await prisma.user.delete({
   where: { id: 1 }
-});
+})
 
-// Delete many
-const result = await prisma.post.deleteMany({
+// Delete all unpublished posts
+const deletedPosts = await prisma.post.deleteMany({
   where: { published: false }
-});
-
-// Cascade delete (configured in schema)
-await prisma.user.delete({
-  where: { id: 1 }
-}); // Also deletes related posts and profile
+})
 ```
 
 ---
 
 ## 🔍 Advanced Queries
 
-### Transactions
+### Filtering
 
 ```typescript
-// Sequential transaction
-const [user, post] = await prisma.$transaction([
-  prisma.user.create({ data: { email: 'new@example.com', password: 'pass' } }),
-  prisma.post.create({ data: { title: 'New Post', authorId: 1 } })
-]);
+// Filter posts
+const publishedPosts = await prisma.post.findMany({
+  where: { published: true }
+})
 
-// Interactive transaction
-const result = await prisma.$transaction(async (tx) => {
-  const user = await tx.user.create({
-    data: { email: 'tx@example.com', password: 'pass' }
-  });
-  
-  if (!user) throw new Error('User creation failed');
-  
-  const post = await tx.post.create({
-    data: { title: 'Transaction Post', authorId: user.id }
-  });
-  
-  return { user, post };
-});
-```
-
-### Raw Queries
-
-```typescript
-// Raw query
-const users = await prisma.$queryRaw`
-  SELECT * FROM users WHERE role = ${'ADMIN'}
-`;
-
-// Raw execute
-await prisma.$executeRaw`
-  UPDATE users SET name = 'Updated' WHERE id = ${1}
-`;
+// Filter with OR
+const filteredPosts = await prisma.post.findMany({
+  where: {
+    OR: [
+      { title: { contains: 'prisma' } },
+      { content: { contains: 'database' } }
+    ]
+  }
+})
 ```
 
 ### Pagination
 
 ```typescript
-// Offset pagination
-async function paginateUsers(page: number, pageSize: number) {
-  const skip = (page - 1) * pageSize;
-  
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({ skip, take: pageSize }),
-    prisma.user.count()
-  ]);
-  
-  return {
-    data: users,
-    meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) }
-  };
-}
-
-// Cursor-based pagination
-async function cursorPaginate(cursor?: number, take: number = 10) {
-  return prisma.user.findMany({
-    take,
-    skip: cursor ? 1 : 0,
-    cursor: cursor ? { id: cursor } : undefined,
-    orderBy: { id: 'asc' }
-  });
-}
+const paginatedUsers = await prisma.user.findMany({
+  skip: 0,
+  take: 10
+})
 ```
 
----
-
-## ✨ Best Practices
-
-### 1. 🔐 Environment Variables
-
-```env
-# .env
-DATABASE_URL="postgresql://user:pass@localhost:5432/db"
-NODE_ENV="development"
-PORT=3000
-```
-
-### 2. 📁 Project Structure
-
-```
-📦 prisma-express-app
- ┣ 📂 generated
- ┃ ┗ � prisma           # Generated Prisma Client
- ┣ 📂 prisma
- ┃ ┣ 📂 migrations
- ┃ ┣ 📜 schema.prisma
- ┃ ┗ 📜 seed.ts
- ┣ 📂 src
- ┃ ┣ � lib
- ┃ ┃ ┗ 📜 prisma.ts
- ┃ ┣ 📂 routes
- ┃ ┣ 📂 services
- ┃ ┗ 📜 index.ts
- ┣ 📜 .env
- ┣ 📜 package.json
- ┣ 📜 prisma.config.ts
- ┗ 📜 tsconfig.json
-```
-
-### 3. 🎯 Type Safety
+### Ordering
 
 ```typescript
-import { Prisma } from '../../generated/prisma/client.js';
-
-// Use Prisma-generated types
-type UserWithPosts = Prisma.UserGetPayload<{
-  include: { posts: true; profile: true }
-}>;
-
-// Input validation
-type UserCreateInput = Prisma.UserCreateInput;
-```
-
-### 4. 🔄 Error Handling
-
-```typescript
-import { Prisma } from '../../generated/prisma/client.js';
-
-try {
-  await prisma.user.create({ data: { email: 'test@test.com', password: 'pass' } });
-} catch (error) {
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code === 'P2002') {
-      console.error('Unique constraint violation');
-    }
-  }
-  throw error;
-}
+const orderedPosts = await prisma.post.findMany({
+  orderBy: { title: 'asc' }
+})
 ```
 
 ---
